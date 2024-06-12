@@ -1,7 +1,8 @@
-use std::io::Read;
+use std::io::{Cursor, Read};
 
-use crate::fat32::Fat32Error;
-use crate::fat32::util::read_bytes;
+use crate::Fat32Error;
+use crate::util::read_bytes;
+use crate::io::Drive;
 
 use super::Fat32Result;
 use std::fmt::Debug;
@@ -73,57 +74,57 @@ impl BPB {
             (0xEB, 0x90) => {},
             (0xE9, _) => {},
             _=> {
-                return Err(Fat32Error::InvalidBPB("Invalid BS_jmpBoot".into()));
+                return Err(Fat32Error::InvalidBPB("Invalid BS_jmpBoot"));
             }
         }
 
         match self.bpb_bytes_per_sec {
             512 | 1024 | 2048 | 4096 => {},
             _=> {
-                return Err(Fat32Error::InvalidBPB("BPB_BytsPerSec can only be 512, 1024, 2048 or 4096".into()))
+                return Err(Fat32Error::InvalidBPB("BPB_BytsPerSec can only be 512, 1024, 2048 or 4096"))
             }
         }
 
         if self.bpb_sec_per_clus == 0 || !self.bpb_sec_per_clus.is_power_of_two() {
-            return Err(Fat32Error::InvalidBPB("BPB_SecPerClus can only be 1, 2, 4, 8, 16, 32, 64, and 128".into()));
+            return Err(Fat32Error::InvalidBPB("BPB_SecPerClus can only be 1, 2, 4, 8, 16, 32, 64, and 128"));
         }
 
         let bytes_per_cluster = self.bpb_bytes_per_sec * self.bpb_sec_per_clus as u16;
 
         if bytes_per_cluster > 32 * 1024 {
-            return Err(Fat32Error::InvalidBPB("No. of bytes per cluster should not exceed 32 * 1024".into()));
+            return Err(Fat32Error::InvalidBPB("No. of bytes per cluster should not exceed 32 * 1024"));
         }
 
         if ![0xF0, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF].contains(&self.bpb_media) {
-            return Err(Fat32Error::InvalidBPB("Invalid BPB_Media value".into()));
+            return Err(Fat32Error::InvalidBPB("Invalid BPB_Media value"));
         }
 
         if self.bpb_root_ent_cnt != 0 {
-            return Err(Fat32Error::InvalidBPB("BPB_RootEntCnt must be 0 for Fat32".into()));
+            return Err(Fat32Error::InvalidBPB("BPB_RootEntCnt must be 0 for Fat32"));
         }
 
         if self.bpb_tot_sec16 != 0 {
-            return Err(Fat32Error::InvalidBPB("BPB_TotSec16 must be 0 for Fat32".into()));
+            return Err(Fat32Error::InvalidBPB("BPB_TotSec16 must be 0 for Fat32"));
         }
 
         if self.bpb_fat_sz16 != 0 {
-            return Err(Fat32Error::InvalidBPB("BPB_FATSz16 must be 0 for Fat32".into()));
+            return Err(Fat32Error::InvalidBPB("BPB_FATSz16 must be 0 for Fat32"));
         }
 
         if self.bpb_tot_sec32 == 0 {
-            return Err(Fat32Error::InvalidBPB("BPB_TotSec32 must be non zero for Fat32".into()));
+            return Err(Fat32Error::InvalidBPB("BPB_TotSec32 must be non zero for Fat32"));
         }
 
         if self.bpb_fs_ver != 0 {
-            return Err(Fat32Error::InvalidBPB("BPB_FSVer higher than 0:0".into()));
+            return Err(Fat32Error::InvalidBPB("BPB_FSVer higher than 0:0"));
         }
 
         if !self.bpb_reserved.iter().all(|x| *x == 0) {
-            return Err(Fat32Error::InvalidBPB("BPB_Reserved shoulb be 0".into()));
+            return Err(Fat32Error::InvalidBPB("BPB_Reserved shoulb be 0"));
         }
 
         if &self.bs_fil_sys_type != b"FAT32   " {
-            return Err(Fat32Error::InvalidBPB("BS_FilSysType must be \"FAT32   \"".into()));
+            return Err(Fat32Error::InvalidBPB("BS_FilSysType must be \"FAT32   \""));
         }
 
         if self.bs_sign != 0xAA55 {
@@ -132,46 +133,55 @@ impl BPB {
 
         Ok(())
     }
-    pub fn read_from(reader: &mut impl Read) -> Fat32Result<Self> {
+    pub fn read_from(drive: &Drive) -> Fat32Result<Self> {
+        let mut buf = Box::new([0u8; 512]);
+        drive.read(&mut *buf, 0)?;
+
+        let mut reader = Cursor::new(&*buf);
+
         let mut bs_jmp_boot = [0; 3];
         let mut bs_oem_name = [0; 8];
-        reader.read_exact(&mut bs_jmp_boot).map_err(|_| Fat32Error::InvalidBPB("Couldn't parse BS_jmpBoot".into()))?;
-        reader.read_exact(&mut bs_oem_name).map_err(|_| Fat32Error::InvalidBPB("Couldn't parse BS_OEMName".into()))?;
+        reader.read_exact(&mut bs_jmp_boot).map_err(|err| Fat32Error::IOError(err))?;
+        reader.read_exact(&mut bs_oem_name).map_err(|err| Fat32Error::IOError(err))?;
     
-        let bpb_bytes_per_sec = read_bytes!(u16, reader, "Failed to read BPB_BytsPerSec");
-        let bpb_sec_per_clus = read_bytes!(u8, reader, "Failed to read BPB_SecPerClus");
-        let bpb_rsvd_sec_cnt = read_bytes!(u16, reader, "Failed to read BPB_RsvdSecCnt");
-        let bpb_num_fats = read_bytes!(u8, reader, "Failed to read BPB_NumFATs");
-        let bpb_root_ent_cnt = read_bytes!(u16, reader, "Failed to read BPB_RootEntCnt");
-        let bpb_tot_sec16 = read_bytes!(u16, reader, "Failed to read BPB_TotSec16");
-        let bpb_media = read_bytes!(u8, reader, "Failed to read BPB_Media");
-        let bpb_fat_sz_16 = read_bytes!(u16, reader, "Failed to read BPB_FATSz16");
-        let bpb_sec_per_trk = read_bytes!(u16, reader, "Failed to read BPB_SecPerTrk");
-        let bpb_num_heads = read_bytes!(u16, reader, "Failed to read BPB_NumHeads");
-        let bpb_hidd_sec = read_bytes!(u32, reader, "Failed to read BPB_HiddSec");
-        let bpb_tot_sec_32 = read_bytes!(u32, reader, "Failed to read BPB_TotSec32");
-        let bpb_fat_sz_32 = read_bytes!(u32, reader, "Failed to read BPB_FATSz32");
-        let bpb_ext_flags = read_bytes!(u16, reader, "Failed to read BPB_ExtFlags");
-        let bpb_fs_ver = read_bytes!(u16, reader, "Failed to read BPB_FSVer");
-        let bpb_root_clus = read_bytes!(u32, reader, "Failed to read BPB_RootClus");
-        let bpb_fs_info = read_bytes!(u16, reader, "Failed to read BPB_FSInfo");
-        let bpb_bk_boot_sec = read_bytes!(u16, reader, "Failed to read BPB_BkBootSec");
+        let bpb_bytes_per_sec = read_bytes!(u16, reader)?;
+        let bpb_sec_per_clus = read_bytes!(u8, reader)?;
+        let bpb_rsvd_sec_cnt = read_bytes!(u16, reader)?;
+        let bpb_num_fats = read_bytes!(u8, reader)?;
+        let bpb_root_ent_cnt = read_bytes!(u16, reader)?;
+        let bpb_tot_sec16 = read_bytes!(u16, reader)?;
+        let bpb_media = read_bytes!(u8, reader)?;
+        let bpb_fat_sz_16 = read_bytes!(u16, reader)?;
+        let bpb_sec_per_trk = read_bytes!(u16, reader)?;
+        let bpb_num_heads = read_bytes!(u16, reader)?;
+        let bpb_hidd_sec = read_bytes!(u32, reader)?;
+        let bpb_tot_sec_32 = read_bytes!(u32, reader)?;
+        let bpb_fat_sz_32 = read_bytes!(u32, reader)?;
+        let bpb_ext_flags = read_bytes!(u16, reader)?;
+        let bpb_fs_ver = read_bytes!(u16, reader)?;
+        let bpb_root_clus = read_bytes!(u32, reader)?;
+        let bpb_fs_info = read_bytes!(u16, reader)?;
+        let bpb_bk_boot_sec = read_bytes!(u16, reader)?;
+        
         let mut bpb_reserved = [0; 12];
-        reader.read_exact(&mut bpb_reserved).map_err(|_| Fat32Error::InvalidBPB("Couldn't parse BPB_Reserved".into()))?;
-        let bs_drv_num = read_bytes!(u8, reader, "Failed to read BS_DrvNum");
-        let bs_reserved1 = read_bytes!(u8, reader, "Failed to read BS_Reserved1");
-        let bs_boot_sig = read_bytes!(u8, reader, "Failed to read BS_BootSig");
-        let bs_vol_id = read_bytes!(u32, reader, "Failed to read BS_VolID");
+        reader.read_exact(&mut bpb_reserved).map_err(|err| Fat32Error::IOError(err))?;
+
+        let bs_drv_num = read_bytes!(u8, reader)?;
+        let bs_reserved1 = read_bytes!(u8, reader)?;
+        let bs_boot_sig = read_bytes!(u8, reader)?;
+        let bs_vol_id = read_bytes!(u32, reader)?;
+        
         let mut bs_vol_lab = [0; 11];
-        reader.read_exact(&mut bs_vol_lab).map_err(|_| Fat32Error::InvalidBPB("Couldn't parse BS_VolLab".into()))?;
+        reader.read_exact(&mut bs_vol_lab).map_err(|err| Fat32Error::IOError(err))?;
+
         let mut bs_fil_sys_type = [0; 8];
-        reader.read_exact(&mut bs_fil_sys_type).map_err(|_| Fat32Error::InvalidBPB("Couldn't parse BS_FilSysType".into()))?;
+        reader.read_exact(&mut bs_fil_sys_type).map_err(|err| Fat32Error::IOError(err))?;
     
         let mut bs_boot_code32= Box::new([0; 420]);
 
-        reader.read(&mut *bs_boot_code32).map_err(|_| Fat32Error::InvalidBPB("Failed to read boot code".into()))?;
+        reader.read(&mut *bs_boot_code32).map_err(|err| Fat32Error::IOError(err))?;
 
-        let bs_sign = read_bytes!(u16, reader, "Failed to read BS_Sign");
+        let bs_sign = read_bytes!(u16, reader)?;
 
         let bpb = BPB {
             bs_jmp_boot,
@@ -205,34 +215,44 @@ impl BPB {
             bs_sign,
         };
 
-        println!("{:#?}", bpb);
         bpb.validate()?;
 
         Ok(bpb)
     }
-    pub fn fat_start_sector(&self) -> u32 {
-        self.bpb_rsvd_sec_cnt as u32
+    pub fn fat_start_sector(&self) -> usize {
+        self.bpb_rsvd_sec_cnt as usize
     } 
-    pub fn fat_sectors(&self) -> u32 {
-        self.bpb_fat_sz32 * self.bpb_num_fats as u32
+    pub fn fat_sectors(&self) -> usize {
+        self.bpb_fat_sz32 as usize * self.bpb_num_fats as usize
     }
-    pub fn root_dir_start_sector(&self) -> u32 {
+    pub fn root_dir_start_sector(&self) -> usize {
         self.fat_start_sector() + self.fat_sectors()
     }
-    pub fn root_dir_sectors(&self) -> u32 {
-        (32 * self.bpb_root_ent_cnt as u32 + self.bpb_bytes_per_sec as u32 - 1) / self.bpb_bytes_per_sec as u32
+    pub fn root_dir_sectors(&self) -> usize {
+        (32 * self.bpb_root_ent_cnt as usize + self.bpb_bytes_per_sec as usize - 1) / self.bpb_bytes_per_sec as usize
     }
-    pub fn data_start_sector(&self) -> u32 {
+    pub fn data_start_sector(&self) -> usize {
         self.root_dir_start_sector() + self.root_dir_sectors()
     }
-    pub fn data_sectors(&self) -> u32 {
-        self.bpb_tot_sec32 - self.data_start_sector()
+    pub fn data_sectors(&self) -> usize {
+        self.bpb_tot_sec32 as usize - self.data_start_sector()
+    }
+    #[inline]
+    pub fn bytes_per_sector(&self) -> usize {
+        self.bpb_bytes_per_sec as usize
+    }
+    #[inline]
+    pub fn sectors_per_cluster(&self) -> usize {
+        self.bpb_sec_per_clus as usize
     }
 
 }
 
 impl Debug for BPB {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #[derive(Debug)]
+        struct BootCode;
+
         f.debug_struct("BPB")
         .field("bs_jmp_boot", &self.bs_jmp_boot)
         .field("bs_oem_name", &String::from_utf8_lossy(&self.bs_oem_name))
@@ -261,7 +281,7 @@ impl Debug for BPB {
         .field("bs_vol_id", &self.bs_vol_id)
         .field("bs_vol_lab", &String::from_utf8_lossy(&self.bs_vol_lab))
         .field("bs_fil_sys_type", &String::from_utf8_lossy(&self.bs_fil_sys_type))
-        .field("bs_boot_code32", &"BootCode")
+        .field("bs_boot_code32", &BootCode)
         .field("bs_sign", &self.bs_sign)
         .finish()
     }

@@ -3,6 +3,10 @@ name = "fat32_at_home"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["fat32"]
+
+
 [dependencies]
+fat32 = {path = "fat32"}
 fuser = "0.14.0"
-thiserror = "1.0.61"
