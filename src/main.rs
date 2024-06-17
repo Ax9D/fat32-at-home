@@ -1,12 +1,17 @@
+mod filesystem;
+mod inode;
+
 use std::error::Error;
 
-use fat32::{Directories, DirectoryType, Drive, Driver, Fat32Result};
+use fat32::{Drive, Driver, Fat32Result, FatDirectory, File, Files};
+use filesystem::Fat32;
+use fuser::MountOption;
 use std::collections::VecDeque;
 
-fn all_dirs(driver: &Driver) -> Fat32Result<()> {
+fn all_files(driver: &Driver) -> Fat32Result<()> {
     let mut queue = VecDeque::new();
 
-    queue.push_back(Directories::new(driver, DirectoryType::Root));
+    queue.push_back(Files::new(driver, &FatDirectory::root(driver)));
 
     while !queue.is_empty() {
         let n = queue.len();
@@ -20,8 +25,15 @@ fn all_dirs(driver: &Driver) -> Fat32Result<()> {
                     println!("{:?}", directory.short_name());
                 }
 
+                if directory.is_file() && directory.short_name().to_str().unwrap().starts_with("DORA") {
+                    let mut buffer = vec![0; directory.file_size()];
+                    let file = File::new(directory.clone())?;
+                    file.read(driver, 0, &mut buffer)?;
+                    // println!("{:?}", buffer);
+                }
+
                 if directory.is_dir() && !special_dir {
-                    queue.push_back(Directories::new(driver, DirectoryType::SubDirectory(directory)));
+                    queue.push_back(Files::new(driver, &FatDirectory::root(&driver)));
                 }
             }
         }
@@ -31,18 +43,26 @@ fn all_dirs(driver: &Driver) -> Fat32Result<()> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    simple_logger::init().unwrap();
+
     let args: Vec<_> = std::env::args().collect();
 
     let drive_path = &args[1];
+    let mount_point = &args[2];
 
+    
     let file = std::fs::OpenOptions::new().read(true).open(drive_path)?;
-
+    
     let drive = Drive::from_file(file)?;
-
+    
     let driver = Driver::new(drive)?;
+    // all_files(&driver)?;
 
+    // panic!();
 
-    all_dirs(&driver)?;
+    let mount_options = &vec![MountOption::RO, MountOption::AllowOther, MountOption::AutoUnmount];
+    let filesystem = Fat32::new(driver, nix::unistd::geteuid().as_raw(), nix::unistd::getegid().as_raw(), mount_options);
+    fuser::mount2(filesystem, mount_point, mount_options)?;
 
     Ok(())
 }
