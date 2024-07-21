@@ -7,6 +7,9 @@ edition = "2021"
 members = ["fat32"]
 
 
+[profile.release]
+debug = true
+
 [dependencies]
 fat32 = {path = "fat32"}
 nix = { version = "0.29", features = ["user"]}
@@ -14,3 +17,4 @@ fuser = "0.14.0"
 parking_lot = "0.12.3"
 log = "0.4.21"
 simple_logger = "5.0.0"
+rayon = "1"
