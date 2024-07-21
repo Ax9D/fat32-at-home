@@ -3,7 +3,7 @@ mod inode;
 
 use std::error::Error;
 
-use fat32::{Drive, Driver, Fat32Result, FatDirectory, File, Files};
+use fat32::{Drive, Driver, Fat32Result, FatDirectory, Files};
 use filesystem::Fat32;
 use fuser::MountOption;
 use std::collections::VecDeque;

@@ -47,8 +47,6 @@ fn file_type_of(directory: &FatDirectory) -> FileType {
     }
 }
 
-const FILE_HANDLE_READ_BIT: u64 = 1 << 63;
-// const FILE_HANDLE_WRITE_BIT: u64 = 1 << 62;
 const FMODE_EXEC: i32 = 0x20;
 
 pub struct Fat32 {
@@ -117,8 +115,13 @@ impl Fat32 {
         let inode_resolver = self.inode_resolver.lock();
         inode_resolver.path(inode).to_owned()
     } 
-    fn check_file_handle_read(&self, file_handle: u64) -> bool {
-        (file_handle & FILE_HANDLE_READ_BIT) != 0
+    fn check_access(&self, _read: bool, write: bool, _execute: bool) -> bool {
+        // Read Only FS for now
+        if write {
+            return false;
+        }   
+
+        true
     }
 }
 impl Filesystem for Fat32 {
@@ -132,11 +135,10 @@ impl Filesystem for Fat32 {
         
         let parent_path = inode_resolver.path(parent);
         let path = parent_path.join(name);
-        
         let found = try_io!(self.driver.search_by_path(&path), reply);
-        println!("lookup success {:#?}", path);
-
+        
         let inode = inode_resolver.get_or_assign_inode(parent, name);
+        log::debug!("lookup {:?} = {}", path, inode);
         
         let file_attr = try_io!(self.file_attr_of(&found, inode, req), reply);
         reply.entry(&Duration::new(1, 0), &file_attr, 0);
@@ -144,7 +146,6 @@ impl Filesystem for Fat32 {
     }
     fn getattr(&mut self, req: &fuser::Request<'_>, inode: u64, reply: fuser::ReplyAttr) {
         let path = self.get_path(inode);
-        println!("get attr {}", path.display());
 
         let file = try_io!(self.driver.search_by_path(&path), reply);
         let attr = try_io!(self.file_attr_of(&file, inode, req), reply);
@@ -152,7 +153,7 @@ impl Filesystem for Fat32 {
         reply.attr(&Duration::new(1, 0), &attr);
     }
     fn opendir(&mut self, _req: &fuser::Request<'_>, inode: u64, flags: i32, reply: fuser::ReplyOpen) {
-        let (access_mask, _read, _write) = match flags & libc::O_ACCMODE {
+        let (_access_mask, read, write) = match flags & libc::O_ACCMODE {
             libc::O_RDONLY => {
                 // Behavior is undefined, but most filesystems return EACCES
                 if flags & libc::O_TRUNC != 0 {
@@ -169,6 +170,11 @@ impl Filesystem for Fat32 {
                 return;
             }
         };
+
+        if !self.check_access(read, write, false) {
+            reply.error(libc::EACCES);
+            return;
+        }
         
         let path = self.get_path(inode);
 
@@ -212,7 +218,7 @@ impl Filesystem for Fat32 {
             reply.ok()
     }
     fn open(&mut self, _req: &fuser::Request<'_>, inode: u64, flags: i32, reply: fuser::ReplyOpen) {
-        let (access_mask, read, write) = match flags & libc::O_ACCMODE {
+        let (access_mask, read, write, exec) = match flags & libc::O_ACCMODE {
             libc::O_RDONLY => {
                 // Behavior is undefined, but most filesystems return EACCES
                 if flags & libc::O_TRUNC != 0 {
@@ -221,13 +227,13 @@ impl Filesystem for Fat32 {
                 }
                 if flags & FMODE_EXEC != 0 {
                     // Open is from internal exec syscall
-                    (libc::X_OK, true, false)
+                    (libc::X_OK, true, false, true)
                 } else {
-                    (libc::R_OK, true, false)
+                    (libc::R_OK, true, false, false)
                 }
             }
-            libc::O_WRONLY => (libc::W_OK, false, true),
-            libc::O_RDWR => (libc::R_OK | libc::W_OK, true, true),
+            libc::O_WRONLY => (libc::W_OK, false, true, false),
+            libc::O_RDWR => (libc::R_OK | libc::W_OK, true, true, false),
             // Exactly one access mode flag must be specified
             _ => {
                 reply.error(libc::EINVAL);
@@ -235,12 +241,13 @@ impl Filesystem for Fat32 {
             }
         };
 
-        // if !self.check_file_handle_read(fh) {
-        //     reply.error(libc::EACCES);
-        //     return;
-        // }
         let path = self.get_path(inode);
         let fh = try_io!(self.driver.open(&path), reply);
+
+        if !self.check_access(read, write, exec) {
+            reply.error(libc::EACCES);
+            return;
+        }
 
         reply.opened(fh, 0)
     }
@@ -265,19 +272,43 @@ impl Filesystem for Fat32 {
             fh: u64,
             offset: i64,
             size: u32,
-            _flags: i32,
+            flags: i32,
             _lock_owner: Option<u64>,
             reply: fuser::ReplyData,
         ) {
         let driver = self.driver.clone();
+
+        let (_access_mask, read, write, exec) = match flags & libc::O_ACCMODE {
+            libc::O_RDONLY => {
+                // Behavior is undefined, but most filesystems return EACCES
+                if flags & libc::O_TRUNC != 0 {
+                    reply.error(libc::EACCES);
+                    return;
+                }
+                if flags & FMODE_EXEC != 0 {
+                    // Open is from internal exec syscall
+                    (libc::X_OK, true, false, true)
+                } else {
+                    (libc::R_OK, true, false, false)
+                }
+            }
+            libc::O_WRONLY => (libc::W_OK, false, true, false),
+            libc::O_RDWR => (libc::R_OK | libc::W_OK, true, true, false),
+            // Exactly one access mode flag must be specified
+            _ => {
+                reply.error(libc::EINVAL);
+                return;
+            }
+        };
+
+        if !self.check_access(read, write, exec) {
+            reply.error(libc::EACCES);
+            return;
+        }
+
         self.tp.spawn(move|| {
             let offset = offset as usize;
 
-            // if !self.check_file_handle_read(fh) {
-            //     reply.error(libc::EACCES);
-            //     return;
-            // }
-            // let path = self.get_path(inode);
             let mut read_buf = vec![0; size as usize];
             let byte_offset = offset as usize;
     
