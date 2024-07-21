@@ -172,8 +172,8 @@ impl FileState {
 
         Ok(())
     }
-    pub fn read(&mut self, driver: &Driver, handle: FileHandle, buffer: &mut [u8], byte_offset: usize) -> Fat32Result<usize> {
-        let file = self.files.get_mut(&handle).ok_or(Fat32Error::InvalidFileHandle(handle))?;
+    pub fn read(&self, driver: &Driver, handle: FileHandle, buffer: &mut [u8], byte_offset: usize) -> Fat32Result<usize> {
+        let file = self.files.get(&handle).ok_or(Fat32Error::InvalidFileHandle(handle))?;
         file.read(driver, byte_offset, buffer)
     }
 }

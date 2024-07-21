@@ -130,7 +130,7 @@ impl Driver {
         file_state.close(handle)
     }
     pub fn read(&self, handle: FileHandle, buffer: &mut [u8], byte_offset: usize) -> Fat32Result<usize> {
-        let mut file_state = self.file_state.lock();
+        let file_state = self.file_state.lock();
 
         file_state.read(self, handle, buffer, byte_offset)
     }

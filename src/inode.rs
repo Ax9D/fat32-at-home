@@ -1,11 +1,11 @@
-use std::{collections::HashMap, ffi::OsStr, path::{Path, PathBuf}, sync::atomic::{AtomicU64, Ordering}};
+use std::{collections::HashMap, ffi::OsStr, path::{Path, PathBuf}};
 
 pub const ROOT_INODE: u64 = 1;
 pub struct InodeResolver {
     path_to_inode: HashMap<PathBuf, u64>,
     inode_to_path: HashMap<u64, PathBuf>,
     parent_inode: HashMap<u64, u64>,
-    next_inode: AtomicU64,
+    next_inode: u64,
 }
 
 impl InodeResolver {
@@ -18,7 +18,7 @@ impl InodeResolver {
         path_to_inode.insert(Path::new("/").to_owned(), ROOT_INODE);
         inode_to_path.insert(ROOT_INODE, Path::new("/").to_owned());
         
-        let next_inode = AtomicU64::new(ROOT_INODE);
+        let next_inode = ROOT_INODE;
         Self {
             path_to_inode,
             parent_inode,
@@ -41,7 +41,8 @@ impl InodeResolver {
             parent_inode
         } else {
             let parent_path = self.inode_to_path.get(&parent).expect("Path path lookup must have happened before child");
-            let inode = self.next_inode.fetch_add(1, Ordering::Relaxed) + 1;
+            self.next_inode += 1;
+            let inode = self.next_inode;
 
             let path = parent_path.join(name);
             self.register_path_inode(path, inode);
