@@ -33,7 +33,7 @@ fn all_files(driver: &Driver) -> Fat32Result<()> {
                 }
 
                 if directory.is_dir() && !special_dir {
-                    queue.push_back(Files::new(driver, &FatDirectory::root(&driver)));
+                    queue.push_back(Files::new(driver, &directory));
                 }
             }
         }
