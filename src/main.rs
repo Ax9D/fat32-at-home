@@ -22,16 +22,8 @@ fn all_files(driver: &Driver) -> Fat32Result<()> {
             while let Some(directory) = current.next()? {
                 let special_dir = directory.is_current_dir() || directory.is_parent_dir();
                 if !special_dir {
-                    println!("{:?}", directory.short_name());
+                    println!("File: {:?}", directory.name());
                 }
-
-                if directory.is_file() && directory.short_name().to_str().unwrap().starts_with("DORA") {
-                    let mut buffer = vec![0; directory.file_size()];
-                    let file = File::new(directory.clone())?;
-                    file.read(driver, 0, &mut buffer)?;
-                    // println!("{:?}", buffer);
-                }
-
                 if directory.is_dir() && !special_dir {
                     queue.push_back(Files::new(driver, &directory));
                 }
@@ -57,8 +49,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     let driver = Driver::new(drive)?;
     // all_files(&driver)?;
-
-    // panic!();
 
     let mount_options = &vec![MountOption::RO, MountOption::AllowOther, MountOption::AutoUnmount];
     let filesystem = Fat32::new(driver, nix::unistd::geteuid().as_raw(), nix::unistd::getegid().as_raw(), mount_options);
