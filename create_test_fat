@@ -1,0 +1,5 @@
+#!/bin/bash
+
+fallocate -l 2G test_fat.fs
+mkfs.fat test_fat.fs
+mcopy -i test_fat.fs -s ./test_data/* ::
