@@ -39,15 +39,19 @@ impl InodeResolver {
         } else if name == ".." {
             let parent_inode = self.parent_inode[&parent];
             parent_inode
-        } else {
-            let parent_path = self.inode_to_path.get(&parent).expect("Path path lookup must have happened before child");
+        }  else {
+            let parent_path = self.inode_to_path.get(&parent).expect("Parent path lookup must have happened before child");
+            let current_path = parent_path.join(name);
+
+            if let Some(existing_inode) = self.path_to_inode.get(&current_path) {
+                return *existing_inode;
+            }
+
             self.next_inode += 1;
             let inode = self.next_inode;
-
-            let path = parent_path.join(name);
-            self.register_path_inode(path, inode);
+            self.register_path_inode(current_path, inode);
             self.parent_inode.insert(inode, parent);
-            
+
             inode
         }
     }
