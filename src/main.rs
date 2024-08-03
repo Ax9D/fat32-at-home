@@ -39,8 +39,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let args: Vec<_> = std::env::args().collect();
 
-    let drive_path = &args[1];
-    let mount_point = &args[2];
+    let drive_path = args.get(1).expect("Please provide the path to the drive to mount");
+    let mount_point = args.get(2).expect("Please provide a mount point");
 
     
     let file = std::fs::OpenOptions::new().read(true).open(drive_path)?;
