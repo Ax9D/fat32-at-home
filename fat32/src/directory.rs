@@ -207,11 +207,20 @@ impl LFN {
 
         let mut name_utf16: [u16; 13] = [0; 13];
 
+        let mut len = name_utf16.len();
         for (ix, chunks) in name.chunks(2).enumerate() {
-            name_utf16[ix] = u16::from_le_bytes([chunks[0], chunks[1]]);
+            let char_u16 = u16::from_le_bytes([chunks[0], chunks[1]]);
+
+            if char_u16 == 0 {
+                len = ix;
+                break;
+            }
+
+            name_utf16[ix] = char_u16;
         }
 
-        let name_string = String::from_utf16(&name_utf16).expect("Invalid UTF-16");
+        let part = String::from_utf16(&name_utf16[0..len]).expect("Invalid UTF-16");
+        let name_string = part;
         
         buffer.push(name_string)
     }
