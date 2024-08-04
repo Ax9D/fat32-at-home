@@ -135,13 +135,13 @@ impl Filesystem for Fat32 {
         
         let parent_path = inode_resolver.path(parent);
         let path = parent_path.join(name);
+        log::debug!("lookup {:?}", name);
         let found = try_io!(self.driver.search_by_path(&path), reply);
-        
         let inode = inode_resolver.get_or_assign_inode(parent, name);
         log::debug!("lookup {:?} = {}", path, inode);
         
         let file_attr = try_io!(self.file_attr_of(&found, inode, req), reply);
-        reply.entry(&Duration::new(1, 0), &file_attr, 0);
+        reply.entry(&Duration::new(0, 0), &file_attr, 0);
 
     }
     fn getattr(&mut self, req: &fuser::Request<'_>, inode: u64, reply: fuser::ReplyAttr) {
@@ -150,7 +150,7 @@ impl Filesystem for Fat32 {
         let file = try_io!(self.driver.search_by_path(&path), reply);
         let attr = try_io!(self.file_attr_of(&file, inode, req), reply);
 
-        reply.attr(&Duration::new(1, 0), &attr);
+        reply.attr(&Duration::new(0, 0), &attr);
     }
     fn opendir(&mut self, _req: &fuser::Request<'_>, inode: u64, flags: i32, reply: fuser::ReplyOpen) {
         let (_access_mask, read, write) = match flags & libc::O_ACCMODE {
