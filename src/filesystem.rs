@@ -314,7 +314,7 @@ impl Filesystem for Fat32 {
             return;
         }
 
-        // self.tp.spawn(move|| {
+        self.tp.spawn(move|| {
             let offset = offset as usize;
 
             let mut read_buf = vec![0; size as usize];
@@ -323,7 +323,6 @@ impl Filesystem for Fat32 {
             let nbytes = try_io!(driver.read(fh, &mut read_buf, byte_offset), reply);
      
             reply.data(&read_buf[0..nbytes])
-        // });
-
+        });
     }
 }
