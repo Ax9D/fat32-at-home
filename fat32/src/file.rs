@@ -19,9 +19,10 @@ impl File {
     pub fn read(&self, driver: &Driver, byte_offset: usize, buffer: &mut [u8]) -> Fat32Result<usize> {
         let file_size = self.directory.file_size();
 
-        let mut read_start_offset = byte_offset;
-        if byte_offset >= file_size {
-            read_start_offset = file_size - 1;
+        let read_start_offset = byte_offset;
+
+        if read_start_offset >= file_size {
+            return Ok(0);
         }
 
         let mut read_len = buffer.len();
@@ -51,23 +52,22 @@ impl File {
         let mut buffer_ptr = 0;
 
         loop {
-            let reading_in_current_cluster = usize::min(to_read, cluster_byte_size);
+            let reading_in_current_cluster = usize::min(to_read, cluster_byte_size - cluster_relative_byte_offset);
+
             let sub_buffer = &mut buffer[buffer_ptr..buffer_ptr + reading_in_current_cluster];
-            
-            // println!("reading {} bytes into sub buffer of len {}", reading_in_current_cluster, sub_buffer.len());
 
             driver.read_cluster(cluster, cluster_relative_byte_offset, sub_buffer)?;
             cluster_relative_byte_offset = 0;
             buffer_ptr += reading_in_current_cluster;
             to_read -= reading_in_current_cluster;
 
-            if let Some(next_cluster) = driver.read_fat(cluster)? {
-                cluster = next_cluster;
-
-            } else {
-                assert!(to_read == 0);
+            if to_read == 0 {
                 break;
-            }
+            } else if let Some(next_cluster) = driver.read_fat(cluster)? {
+                cluster = next_cluster;
+            } else {
+                return Err(Fat32Error::FileCorrupt);
+            } 
         }
 
         Ok(read_len as usize)
