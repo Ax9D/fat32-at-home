@@ -306,16 +306,16 @@ impl Filesystem for Fat32 {
             return;
         }
 
-        self.tp.spawn(move|| {
+        // self.tp.spawn(move|| {
             let offset = offset as usize;
 
             let mut read_buf = vec![0; size as usize];
             let byte_offset = offset as usize;
     
-            try_io!(driver.read(fh, &mut read_buf, byte_offset), reply);
-    
-            reply.data(&read_buf)
-        });
+            let nbytes = try_io!(driver.read(fh, &mut read_buf, byte_offset), reply);
+     
+            reply.data(&read_buf[0..nbytes])
+        // });
 
     }
 }
