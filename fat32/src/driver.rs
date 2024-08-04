@@ -37,7 +37,6 @@ impl Driver {
     
         Ok(())
     }
-    #[allow(unused)]
     pub(crate) fn read_cluster(&self, n: usize, byte_offset: usize, buffer: &mut [u8]) -> Fat32Result<()> {
         let start_sector = self.bpb.cluster_start_sector(n);
         self.read_sector( start_sector, byte_offset, buffer)?;
