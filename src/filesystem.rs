@@ -1,7 +1,7 @@
 use std::{ffi::{c_int, OsStr}, path::PathBuf, sync::Arc, time::Duration};
 
 use fat32::{Driver, Fat32Result, FatDirectory};
-use fuser::{FileAttr, FileType, Filesystem, MountOption};
+use fuser::{consts::FOPEN_DIRECT_IO, FileAttr, FileType, Filesystem, MountOption};
 use nix::libc;
 use parking_lot::Mutex;
 use rayon::{ThreadPool, ThreadPoolBuilder};
@@ -55,10 +55,11 @@ pub struct Fat32 {
     mount_permissions_mask: u16,
     mount_uid: u32,
     mount_gid: u32, 
-    tp: ThreadPool
+    tp: ThreadPool,
+    direct_io: bool,
 }
 impl Fat32 {
-    pub fn new(driver: Driver, uid: u32, gid: u32, mount_options: &Vec<MountOption>) -> Self {
+    pub fn new(driver: Driver, uid: u32, gid: u32, mount_options: &Vec<MountOption>, direct_io: bool) -> Self {
         let mut mount_permissions_mask = 0;
 
         let mut rwx = 0b000;
@@ -82,6 +83,7 @@ impl Fat32 {
             inode_resolver: Mutex::new(InodeResolver::new()),
             mount_uid: uid,
             mount_gid: gid,
+            direct_io,
             tp: ThreadPoolBuilder::new().build().unwrap()
         }
     }
@@ -249,7 +251,13 @@ impl Filesystem for Fat32 {
             return;
         }
 
-        reply.opened(fh, 0)
+        let flags = if self.direct_io {
+            FOPEN_DIRECT_IO
+        } else {
+            0
+        };
+
+        reply.opened(fh, flags)
     }
     fn release(
             &mut self,

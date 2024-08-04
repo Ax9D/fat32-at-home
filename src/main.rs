@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // all_files(&driver)?;
 
     let mount_options = &vec![MountOption::RO, MountOption::AllowOther, MountOption::AutoUnmount];
-    let filesystem = Fat32::new(driver, nix::unistd::geteuid().as_raw(), nix::unistd::getegid().as_raw(), mount_options);
+    let filesystem = Fat32::new(driver, nix::unistd::geteuid().as_raw(), nix::unistd::getegid().as_raw(), mount_options, false);
     fuser::mount2(filesystem, mount_point, mount_options)?;
 
     Ok(())
