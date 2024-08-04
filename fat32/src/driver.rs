@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::path::{Component, Path};
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 use crate::{Fat32Error, FatDirectory, FileHandle, FileState, Files};
 
@@ -11,7 +11,7 @@ use super::{boot::BPB, Fat32Result};
 pub struct Driver {
     pub(crate) drive: Drive,
     pub(crate) bpb: BPB,
-    file_state: Mutex<FileState>,
+    file_state: RwLock<FileState>,
 }
 
 impl Driver {
@@ -23,7 +23,7 @@ impl Driver {
         Ok(Self {
             drive,
             bpb,
-            file_state: Mutex::new(FileState::new()),
+            file_state: RwLock::new(FileState::new()),
         })
     }
     pub fn bytes_per_cluster(&self) -> usize {
@@ -101,36 +101,36 @@ impl Driver {
     }
     pub fn open_dir(&self, path: &Path) -> Fat32Result<FileHandle> {
         let directory = self.search_by_path(path)?;
-        let mut file_state = self.file_state.lock();
+        let mut file_state = self.file_state.write();
 
         let handle = file_state.open_dir(&directory)?;
 
         Ok(handle)
     }
     pub fn read_dir(&self, handle: FileHandle, offset: usize) -> Fat32Result<Option<FatDirectory>>{
-        let mut file_state = self.file_state.lock();
+        let mut file_state = self.file_state.write();
 
         file_state.read_dir(self, handle, offset)
     }
     pub fn close_dir(&self, handle: FileHandle) -> Fat32Result<()> {
-        let mut file_state = self.file_state.lock();
+        let mut file_state = self.file_state.write();
         file_state.close_dir(handle)
     }
     pub fn open(&self, path: &Path) -> Fat32Result<FileHandle> {
         let file = self.search_by_path(path)?;
-        let mut file_state = self.file_state.lock();
+        let mut file_state = self.file_state.write();
 
         let handle = file_state.open(&file)?;
 
         Ok(handle)
     }
     pub fn close(&self, handle: FileHandle) -> Fat32Result<()> {
-        let mut file_state = self.file_state.lock();
+        let mut file_state = self.file_state.write();
 
         file_state.close(handle)
     }
     pub fn read(&self, handle: FileHandle, buffer: &mut [u8], byte_offset: usize) -> Fat32Result<usize> {
-        let file_state = self.file_state.lock();
+        let file_state = self.file_state.read();
 
         file_state.read(self, handle, buffer, byte_offset)
     }
